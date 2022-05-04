@@ -30,6 +30,7 @@ impl TimerFuture {
     /// Create a new `TimerFuture` which will complete after the provided
     /// timeout.
     pub fn new(duration: Duration) -> Self {
+        log::trace!("TimerFuture::new:+ duration={:?}", duration);
         let shared_state = Arc::new(Mutex::new(SharedState {
             completed: false,
             waker: None,
@@ -38,26 +39,34 @@ impl TimerFuture {
         // Spawn the new thread
         let thread_shared_state = shared_state.clone();
         thread::spawn(move || {
+            log::trace!("TimerFuture::new: start sleeping duration={:?}", duration);
             thread::sleep(duration);
+            log::trace!("TimerFuture::new:   end sleeping duration={:?}", duration);
             let mut shared_state = thread_shared_state.lock().unwrap();
             // Signal that the timer has completed and wake up the last
             // task on which the future was polled, if one exists.
             shared_state.completed = true;
             if let Some(waker) = shared_state.waker.take() {
-                waker.wake()
+                log::trace!("TimerFuture::new: duration={:?} waker.wake+", duration);
+                waker.wake();
+                log::trace!("TimerFuture::new: duration={:?} waker.wake-", duration);
             }
         });
 
-        TimerFuture { shared_state }
+        let res = TimerFuture { shared_state };
+        log::trace!("TimerFuture::new:- duration={:?}", duration);
+        res
     }
 }
 
 impl Future for TimerFuture {
     type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        log::trace!("TimerFuture::poll:+");
         // Look at the shared state to see if the timer has already completed.
         let mut shared_state = self.shared_state.lock().unwrap();
         if shared_state.completed {
+            log::trace!("TimerFuture::poll:- res Poll::Ready(())");
             Poll::Ready(())
         } else {
             // Set waker so that the thread can wake up the current task
@@ -73,6 +82,7 @@ impl Future for TimerFuture {
             // N.B. it's possible to check for this using the `Waker::will_wake`
             // function, but we omit that here to keep things simple.
             shared_state.waker = Some(cx.waker().clone());
+            log::trace!("TimerFuture::poll:- res Poll::Pending");
             Poll::Pending
         }
     }
