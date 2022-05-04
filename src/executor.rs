@@ -53,17 +53,19 @@ pub fn new_executor_and_spawner() -> (Executor, Spawner) {
 }
 
 impl Spawner {
+    // This probably needs to return a `impl future<Output = ()>`
+    // so the "task" spawned cand be await'd or polled????
     pub fn spawn(&self, future: impl Future<Output = ()> + 'static + Send) {
         log::trace!("spawn:+");
+
         let future = future.boxed();
         let task = Arc::new(Task {
             future: Mutex::new(Some(future)),
             task_sender: self.task_sender.clone(),
         });
 
-        let res = self.task_sender.send(task).expect("too many tasks queued");
+        self.task_sender.send(task).expect("too many tasks queued");
         log::trace!("spawn:-");
-        res
     }
 }
 
